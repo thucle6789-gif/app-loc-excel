@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import json
 
 # Cấu hình giao diện trang web hiển thị rộng rãi
 st.set_page_config(page_title="Phần mềm Lọc Dữ Liệu Excel", layout="wide")
@@ -25,11 +24,12 @@ def load_data():
         df.columns = df.columns.str.strip()
         
         # --- KHẮC PHỤC TRIỆT ĐỂ LỖI JSON (NaN / NaT) ---
-        # 1. Ép tất cả các ô trống định dạng ngày tháng (NaT) thành ô trống rỗng
+        # 1. Ép tất cả các ô về kiểu đối tượng chung để dễ xử lý ô trống
         df = df.astype(object)
         
-        # 2. Quét qua từng ô dữ liệu, nếu gặp lỗi hệ thống hoặc rỗng sẽ biến thành chuỗi trống ""
-        df = df.applymap(lambda x: "" if pd.isna(x) or str(x).strip().lower() in ["nan", "nat", "null", "#n/a"] else x)
+        # 2. Thay thế applymap bằng hàm map (tương thích phiên bản Pandas mới nhất)
+        # Quét qua từng ô dữ liệu, nếu gặp lỗi hệ thống hoặc rỗng sẽ biến thành chuỗi trống ""
+        df = df.map(lambda x: "" if pd.isna(x) or str(x).strip().lower() in ["nan", "nat", "null", "#n/a"] else x)
         
         # 3. Đảm bảo tên cột không chứa ký tự lạ làm lỗi giao diện
         df.columns = [str(c) for c in df.columns]
@@ -82,7 +82,7 @@ if df is not None:
     # --- PHẦN 2: HIỂN THỊ KẾT QUẢ ---
     st.metric(label="Tổng số khách hàng tìm thấy", value=len(filtered_df))
     
-    # Hiển thị bảng dữ liệu (Sử dụng cấu hình ép kiểu Chuỗi để tránh tuyệt đối lỗi JSON của trình duyệt)
+    # Hiển thị bảng dữ liệu dưới dạng chuỗi để tránh tuyệt đối lỗi đồ họa JSON
     st.dataframe(filtered_df.astype(str), use_container_width=True)
     
     # Nút bấm tải dữ liệu (.CSV)
