@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import json
 
 # Cấu hình giao diện trang web hiển thị rộng rãi
 st.set_page_config(page_title="Phần mềm Lọc Dữ Liệu Excel", layout="wide")
@@ -9,32 +10,33 @@ st.subheader("📋 Đang đọc dữ liệu từ sheet: DSKH")
 st.write("Dữ liệu được cập nhật theo thời gian thực từ file Excel trên Drive của bạn.")
 
 # --- BƯỚC THAY ĐỔI THÔNG TIN CỦA BẠN ---
-# Hãy thay chuỗi chữ dưới đây bằng MÃ_FILE_CỦA_BẠN của bạn
+# Hãy thay chuỗi chữ dưới đây bằng MÃ_FILE_CỦA_BẠN thực tế của bạn
 FILE_ID = "1mrhz-JQAKu2lrQk7cDB_9Vpv4BOQWREh"
 # --------------------------------------
 
 # Đường dẫn tải trực tiếp file Excel từ Google Drive
 excel_url = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
 
-# Hàm đọc dữ liệu từ sheet "DSKH"
-@st.cache_data(ttl=60)
+# Hàm đọc dữ liệu và làm sạch triệt để mọi lỗi định dạng JSON
+@st.cache_data(ttl=10) # Thu ngắn thời gian cache xuống còn 10 giây
 def load_data():
     try:
         df = pd.read_excel(excel_url, sheet_name='DSKH', engine='openpyxl')
         df.columns = df.columns.str.strip()
         
-        # --- ĐOẠN SỬA LỖI JSON / NaN ---
-        # Điền chuỗi rỗng vào các ô trống và xử lý lỗi không tương thích định dạng JSON của Streamlit
-        df = df.fillna("")
-        # Đảm bảo chuyển hết các cột về dạng chuỗi hoặc số chuẩn để Streamlit vẽ bảng mượt mà
-        for col in df.columns:
-            if df[col].dtype == 'object':
-                df[col] = df[col].astype(str)
-        # -------------------------------
+        # --- KHẮC PHỤC TRIỆT ĐỂ LỖI JSON (NaN / NaT) ---
+        # 1. Ép tất cả các ô trống định dạng ngày tháng (NaT) thành ô trống rỗng
+        df = df.astype(object)
+        
+        # 2. Quét qua từng ô dữ liệu, nếu gặp lỗi hệ thống hoặc rỗng sẽ biến thành chuỗi trống ""
+        df = df.applymap(lambda x: "" if pd.isna(x) or str(x).strip().lower() in ["nan", "nat", "null", "#n/a"] else x)
+        
+        # 3. Đảm bảo tên cột không chứa ký tự lạ làm lỗi giao diện
+        df.columns = [str(c) for c in df.columns]
         
         return df
     except ValueError:
-        st.error("❌ Không tìm thấy sheet tên là 'DSKH' trong file Excel của bạn.")
+        st.error("❌ Không tìm thấy sheet tên là 'DSKH' trong file Excel của bạn. Vui lòng kiểm tra lại tên sheet.")
         return None
     except Exception as e:
         st.error(f"❌ Không thể kết nối đến file Excel trên Drive. Lỗi: {e}")
@@ -49,7 +51,7 @@ if df is not None:
     # Ô tìm kiếm từ khóa chung toàn bảng
     search_query = st.sidebar.text_input("🔍 Tìm kiếm nhanh (Tên, SĐT, Địa chỉ...):")
     
-    # Tạo các bộ lọc tự động theo từng cột dữ liệu
+    # Lấy danh sách tất cả các cột dữ liệu
     all_columns = df.columns.tolist()
     
     # Chọn các cột muốn dùng để lọc chi tiết
@@ -67,18 +69,21 @@ if df is not None:
         filtered_df = filtered_df[mask]
         
     for col in selected_filter_cols:
-        # Lấy giá trị duy nhất và bỏ các giá trị rỗng khỏi menu lọc
-        unique_vals = [val for val in df[col].unique() if str(val).strip() != ""]
+        # Lấy giá trị duy nhất, bỏ các giá trị trống khỏi bộ lọc dropdown
+        unique_vals = [str(val).strip() for val in df[col].unique() if str(val).strip() != ""]
+        unique_vals = sorted(list(set(unique_vals))) # Sắp xếp thứ tự cho dễ tìm
+        
         selected_vals = st.sidebar.multiselect(f"Lọc theo {col}:", options=unique_vals)
         
         if selected_vals:
-            filtered_df = filtered_df[filtered_df[col].isin(selected_vals)]
+            # Ép kiểu về chuỗi để so sánh chính xác với bộ lọc dữ liệu sạch
+            filtered_df = filtered_df[filtered_df[col].astype(str).isin(selected_vals)]
             
     # --- PHẦN 2: HIỂN THỊ KẾT QUẢ ---
     st.metric(label="Tổng số khách hàng tìm thấy", value=len(filtered_df))
     
-    # Hiển thị bảng dữ liệu (Đã an toàn không lo lỗi JSON)
-    st.dataframe(filtered_df, use_container_width=True)
+    # Hiển thị bảng dữ liệu (Sử dụng cấu hình ép kiểu Chuỗi để tránh tuyệt đối lỗi JSON của trình duyệt)
+    st.dataframe(filtered_df.astype(str), use_container_width=True)
     
     # Nút bấm tải dữ liệu (.CSV)
     csv = filtered_df.to_csv(index=False).encode('utf-8-sig')
