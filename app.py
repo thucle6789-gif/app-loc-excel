@@ -9,35 +9,23 @@ st.subheader("📋 Đang đọc dữ liệu từ sheet: DSKH (Tiêu đề dòng 
 st.write("Dữ liệu được cập nhật theo thời gian thực từ file Excel trên Drive của bạn.")
 
 # --- BƯỚC THAY ĐỔI THÔNG TIN CỦA BẠN ---
-# Hãy thay chuỗi chữ dưới đây bằng MÃ_FILE_CỦA_BẠN thực tế của bạn
+# 1. Hãy thay chuỗi chữ dưới đây bằng MÃ_FILE_CỦA_BẠN thực tế của bạn
 FILE_ID = "1mrhz-JQAKu2lrQk7cDB_9Vpv4BOQWREh"
+
+# 2. HÃY THAY TÊN CỘT BẠN MUỐN TÍNH TỔNG VÀO ĐÂY (Ví dụ: "Doanh Số", "Số Lượng", "Tiền"...)
+COT_TINH_TONG = "Doanh Số" 
 # --------------------------------------
 
 # Đường dẫn tải trực tiếp file Excel từ Google Drive
 excel_url = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
 
 # Hàm đọc dữ liệu và làm sạch triệt để mọi lỗi định dạng JSON
-@st.cache_data(ttl=10) # Thu ngắn thời gian cache xuống còn 10 giây
+@st.cache_data(ttl=10)
 def load_data():
     try:
-        # Bổ sung tham số header=3 để ép hệ thống lấy dòng số 4 trong Excel làm tiêu đề cột
         df = pd.read_excel(excel_url, sheet_name='DSKH', header=3, engine='openpyxl')
-        
-        # Loại bỏ khoảng trắng thừa ở tên cột và lọc bỏ các cột hoàn toàn không có tên
         df.columns = df.columns.str.strip()
         df = df.loc[:, ~df.columns.str.contains('^Unnamed:')]
-        
-        # --- KHẮC PHỤC TRIỆT ĐỂ LỖI JSON (NaN / NaT) ---
-        # 1. Ép tất cả các ô về kiểu đối tượng chung để dễ xử lý ô trống
-        df = df.astype(object)
-        
-        # 2. Thay thế applymap bằng hàm map (tương thích phiên bản Pandas mới nhất)
-        # Quét qua từng ô dữ liệu, nếu gặp lỗi hệ thống hoặc rỗng sẽ biến thành chuỗi trống ""
-        df = df.map(lambda x: "" if pd.isna(x) or str(x).strip().lower() in ["nan", "nat", "null", "#n/a"] else x)
-        
-        # 3. Đảm bảo tên cột không chứa ký tự lạ hoặc chữ 'nan' làm lỗi giao diện
-        df.columns = [str(c) for c in df.columns if str(c).lower() != 'nan']
-        
         return df
     except ValueError:
         st.error("❌ Không tìm thấy sheet tên là 'DSKH' trong file Excel của bạn. Vui lòng kiểm tra lại tên sheet.")
@@ -51,14 +39,9 @@ df = load_data()
 if df is not None:
     # --- PHẦN 1: TẠO BỘ LỌC DỮ LIỆU (SIDEBAR) ---
     st.sidebar.header("Bộ Lọc Dữ Liệu DSKH")
-    
-    # Ô tìm kiếm từ khóa chung toàn bảng
     search_query = st.sidebar.text_input("🔍 Tìm kiếm nhanh (Mã, Tên, SĐT...):")
     
-    # Lấy danh sách tất cả các cột dữ liệu hợp lệ
     all_columns = [col for col in df.columns.tolist() if col.strip() != ""]
-    
-    # Chọn các cột muốn dùng để lọc chi tiết (Mặc định gợi ý chọn 2 cột đầu tiên của dòng 4)
     selected_filter_cols = st.sidebar.multiselect(
         "Chọn các cột bạn muốn lọc chi tiết:", 
         options=all_columns, 
@@ -73,21 +56,20 @@ if df is not None:
         filtered_df = filtered_df[mask]
         
     for col in selected_filter_cols:
-        # Lấy giá trị duy nhất, bỏ các giá trị trống khỏi bộ lọc dropdown
         unique_vals = [str(val).strip() for val in df[col].unique() if str(val).strip() != ""]
-        unique_vals = sorted(list(set(unique_vals))) # Sắp xếp thứ tự cho dễ tìm
-        
+        unique_vals = sorted(list(set(unique_vals)))
         selected_vals = st.sidebar.multiselect(f"Lọc theo {col}:", options=unique_vals)
         
         if selected_vals:
-            # Ép kiểu về chuỗi để so sánh chính xác với bộ lọc dữ liệu sạch
             filtered_df = filtered_df[filtered_df[col].astype(str).isin(selected_vals)]
             
-    # --- PHẦN 2: HIỂN THỊ KẾT QUẢ ---
-    st.metric(label="Tổng số khách hàng tìm thấy", value=len(filtered_df))
+    # --- PHẦN 2: HIỂN THỊ BẢNG DỮ LIỆU CHÍNH ---
+    # Ép kiểu dữ liệu sang String để hiển thị bảng an toàn không lỗi đồ họa
+    df_hien_thi = filtered_df.copy().astype(object)
+    df_hien_thi = df_hien_thi.map(lambda x: "" if pd.isna(x) or str(x).strip().lower() in ["nan", "nat", "null", "#n/a"] else x)
+    df_hien_thi.columns = [str(c) for c in df_hien_thi.columns if str(c).lower() != 'nan']
     
-    # Hiển thị bảng dữ liệu dưới dạng chuỗi để tránh tuyệt đối lỗi đồ họa JSON
-    st.dataframe(filtered_df.astype(str), use_container_width=True)
+    st.dataframe(df_hien_thi.astype(str), use_container_width=True)
     
     # Nút bấm tải dữ liệu (.CSV)
     csv = filtered_df.to_csv(index=False).encode('utf-8-sig')
@@ -97,3 +79,26 @@ if df is not None:
         file_name="dskh_da_loc.csv",
         mime="text/csv",
     )
+    
+    # --- PHẦN 3: LAYOUT THỐNG KÊ TÍNH TỔNG (NẰM PHÍA DƯỚI) ---
+    st.markdown("---") # Dấu gạch ngang phân cách bản dữ liệu và khu vực tổng kết
+    st.subheader("📊 Khu vực tính tổng dữ liệu sau khi lọc")
+    
+    # Tạo 2 cột nằm ngang phía dưới để hiển thị số liệu tổng kết
+    col_thong_ke_1, col_thong_ke_2 = st.columns(2)
+    
+    with col_thong_ke_1:
+        # Thống kê số 1: Đếm tổng số dòng (số khách hàng) sau khi lọc
+        st.metric(label="Tổng số dòng dữ liệu lọc được", value=f"{len(filtered_df)} dòng")
+        
+    with col_thong_ke_2:
+        # Thống kê số 2: Tính tổng một cột số
+        if COT_TINH_TONG in filtered_df.columns:
+            # Chuyển đổi dữ liệu cột đó sang dạng số, bỏ qua các ô lỗi hoặc ô chữ để tính tổng không bị lỗi
+            solieu_so = pd.to_numeric(filtered_df[COT_TINH_TONG], errors='coerce').fillna(0)
+            tong_gia_tri = solieu_so.sum()
+            
+            # Hiển thị số tổng (được định dạng có dấu phẩy phân cách hàng nghìn cho dễ nhìn)
+            st.metric(label=f"Tổng cộng của cột [{COT_TINH_TONG}]", value=f"{tong_gia_tri:,.0f}")
+        else:
+            st.info(f"💡 Để tính tổng số tiền/số lượng, hãy sửa tên biến COT_TINH_TONG ở dòng 16 thành tên cột số có trong file của bạn (Hiện tại không tìm thấy cột tên '{COT_TINH_TONG}').")
