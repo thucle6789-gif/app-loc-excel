@@ -5,7 +5,7 @@ import pandas as pd
 st.set_page_config(page_title="Phần mềm Lọc Dữ Liệu Excel", layout="wide")
 
 st.title("📊 ỨNG DỤNG LỌC DỮ LIỆU EXCEL TỪ GOOGLE DRIVE")
-st.subheader("📋 Đang đọc dữ liệu từ sheet: DSKH")
+st.subheader("📋 Đang đọc dữ liệu từ sheet: DSKH (Tiêu đề dòng 4)")
 st.write("Dữ liệu được cập nhật theo thời gian thực từ file Excel trên Drive của bạn.")
 
 # --- BƯỚC THAY ĐỔI THÔNG TIN CỦA BẠN ---
@@ -20,8 +20,12 @@ excel_url = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
 @st.cache_data(ttl=10) # Thu ngắn thời gian cache xuống còn 10 giây
 def load_data():
     try:
-        df = pd.read_excel(excel_url, sheet_name='DSKH', engine='openpyxl')
+        # Bổ sung tham số header=3 để ép hệ thống lấy dòng số 4 trong Excel làm tiêu đề cột
+        df = pd.read_excel(excel_url, sheet_name='DSKH', header=3, engine='openpyxl')
+        
+        # Loại bỏ khoảng trắng thừa ở tên cột và lọc bỏ các cột hoàn toàn không có tên
         df.columns = df.columns.str.strip()
+        df = df.loc[:, ~df.columns.str.contains('^Unnamed:')]
         
         # --- KHẮC PHỤC TRIỆT ĐỂ LỖI JSON (NaN / NaT) ---
         # 1. Ép tất cả các ô về kiểu đối tượng chung để dễ xử lý ô trống
@@ -31,8 +35,8 @@ def load_data():
         # Quét qua từng ô dữ liệu, nếu gặp lỗi hệ thống hoặc rỗng sẽ biến thành chuỗi trống ""
         df = df.map(lambda x: "" if pd.isna(x) or str(x).strip().lower() in ["nan", "nat", "null", "#n/a"] else x)
         
-        # 3. Đảm bảo tên cột không chứa ký tự lạ làm lỗi giao diện
-        df.columns = [str(c) for c in df.columns]
+        # 3. Đảm bảo tên cột không chứa ký tự lạ hoặc chữ 'nan' làm lỗi giao diện
+        df.columns = [str(c) for c in df.columns if str(c).lower() != 'nan']
         
         return df
     except ValueError:
@@ -49,12 +53,12 @@ if df is not None:
     st.sidebar.header("Bộ Lọc Dữ Liệu DSKH")
     
     # Ô tìm kiếm từ khóa chung toàn bảng
-    search_query = st.sidebar.text_input("🔍 Tìm kiếm nhanh (Tên, SĐT, Địa chỉ...):")
+    search_query = st.sidebar.text_input("🔍 Tìm kiếm nhanh (Mã, Tên, SĐT...):")
     
-    # Lấy danh sách tất cả các cột dữ liệu
-    all_columns = df.columns.tolist()
+    # Lấy danh sách tất cả các cột dữ liệu hợp lệ
+    all_columns = [col for col in df.columns.tolist() if col.strip() != ""]
     
-    # Chọn các cột muốn dùng để lọc chi tiết
+    # Chọn các cột muốn dùng để lọc chi tiết (Mặc định gợi ý chọn 2 cột đầu tiên của dòng 4)
     selected_filter_cols = st.sidebar.multiselect(
         "Chọn các cột bạn muốn lọc chi tiết:", 
         options=all_columns, 
