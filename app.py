@@ -12,13 +12,29 @@ st.write("Dữ liệu được cập nhật theo thời gian thực từ file Ex
 # 1. Hãy thay chuỗi chữ dưới đây bằng MÃ_FILE_CỦA_BẠN thực tế của bạn
 FILE_ID = "1mrhz-JQAKu2lrQk7cDB_9Vpv4BOQWREh"
 
-# 2. HÃY THAY TÊN CỘT BẠN MUỐN TÍNH TỔNG VÀO ĐÂY 
-# Lưu ý: Nhập tên sau khi đã nối, ví dụ: "Doanh Thu | Thực Tế" hoặc "Sản Lượng | Số Lượng"
+# 2. HÃY THAY TÊN CỘT BẠN MUỐN TÍNH TỔNG VÀO ĐÂY (Ví dụ: "Doanh Số" hoặc tên cột sau khi gộp)
 COT_TINH_TONG = "Doanh Số" 
 # --------------------------------------
 
 # Đường dẫn tải trực tiếp file Excel từ Google Drive
 excel_url = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
+
+# Hàm xử lý đặt tên cột độc bản, chống lỗi trùng lặp (Duplicate Column Names)
+def make_unique_columns(headers):
+    seen = {}
+    unique_headers = []
+    for item in headers:
+        item_str = str(item).strip()
+        if item_str == "" or item_str.lower() in ["nan", "unnamed:"]:
+            item_str = "Cột_Trống"
+            
+        if item_str not in seen:
+            seen[item_str] = 1
+            unique_headers.append(item_str)
+        else:
+            seen[item_str] += 1
+            unique_headers.append(f"{item_str}_{seen[item_str] - 1}")
+    return unique_headers
 
 # Hàm đọc dữ liệu và xử lý gộp hiển thị tiêu đề 2 tầng độc lập
 @st.cache_data(ttl=10)
@@ -32,20 +48,23 @@ def load_data():
         row_5 = df_raw.iloc[4].fillna("").astype(str).str.strip()
         
         # Tiến hành xử lý nối tiêu đề thông minh
-        final_headers = []
+        raw_headers = []
         for idx, (r4, r5) in enumerate(zip(row_4, row_5)):
-            # Nếu cả 2 dòng đều trống
-            if r4 == "" and r5 == "":
-                final_headers.append(f"Cột_Trống_{idx + 1}")
-            # Nếu dòng 4 có chữ, dòng 5 trống
-            elif r4 != "" and r5 == "":
-                final_headers.append(r4)
-            # Nếu dòng 4 trống, dòng 5 có chữ
-            elif r4 == "" and r5 != "":
-                final_headers.append(r5)
-            # Nếu cả 2 dòng cùng có chữ -> Nối lại bằng dấu gạch ngang dọc rõ ràng
+            # Lọc bỏ các chữ rác hệ thống tự sinh
+            r4_clean = "" if r4.lower().startswith("unnamed:") else r4
+            r5_clean = "" if r5.lower().startswith("unnamed:") else r5
+            
+            if r4_clean == "" and r5_clean == "":
+                raw_headers.append("")
+            elif r4_clean != "" and r5_clean == "":
+                raw_headers.append(r4_clean)
+            elif r4_clean == "" and r5_clean != "":
+                raw_headers.append(r5_clean)
             else:
-                final_headers.append(f"{r4} | {r5}")
+                raw_headers.append(f"{r4_clean} | {r5_clean}")
+                
+        # Ép các tên cột phải độc bản, không được trùng nhau
+        final_headers = make_unique_columns(raw_headers)
                 
         # Cắt bỏ phần tiêu đề cũ để lấy dữ liệu thực tế từ dòng 6 trở đi (index 5)
         df = df_raw.iloc[5:].copy()
@@ -91,11 +110,11 @@ if df is not None:
             filtered_df = filtered_df[filtered_df[col].astype(str).isin(selected_vals)]
             
     # --- PHẦN 2: HIỂN THỊ BẢNG DỮ LIỆU CHÍNH ---
-    # Làm sạch các ô trống để hiển thị mượt mà
+    # Làm sạch các ô trống để hiển thị mượt mà không lỗi JSON
     df_hien_thi = filtered_df.copy().astype(object)
     df_hien_thi = df_hien_thi.map(lambda x: "" if pd.isna(x) or str(x).strip().lower() in ["nan", "nat", "null", "#n/a"] else x)
     
-    # Hiển thị bảng tương tác (Tiêu đề gộp sẽ đứng im cố định 100% khi cuộn)
+    # Hiển thị bảng tương tác (Tiêu đề gộp sẽ đứng im cố định 100% khi cuộn chuột)
     st.dataframe(df_hien_thi.astype(str), use_container_width=True)
     
     # Nút bấm tải dữ liệu (.CSV)
@@ -122,4 +141,4 @@ if df is not None:
             tong_gia_tri = solieu_so.sum()
             st.metric(label=f"Tổng cộng của cột [{COT_TINH_TONG}]", value=f"{tong_gia_tri:,.0f}")
         else:
-            st.info(f"💡 Để tính tổng, hãy sửa biến COT_TINH_TONG ở dòng 16 thành tên gộp chính xác hiển thị trên bảng.")
+            st.info(f"💡 Để tính tổng, hãy sửa biến COT_TINH_TONG ở dòng 16 thành tên cột hiển thị chính xác trên bảng.")
