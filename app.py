@@ -13,7 +13,7 @@ st.write("Dữ liệu được cập nhật theo thời gian thực từ file Ex
 FILE_ID = "1mrhz-JQAKu2lrQk7cDB_9Vpv4BOQWREh"
 
 # 2. HÃY THAY TÊN CỘT BẠN MUỐN TÍNH TỔNG VÀO ĐÂY (Sửa đúng theo tên ở dòng số 4)
-COT_TINH_TONG = "Doanh Số" 
+COT_TINH_TONG = "V_SHOP" 
 # --------------------------------------
 
 # Đường dẫn tải trực tiếp file Excel từ Google Drive
